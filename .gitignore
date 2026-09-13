@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.cf-api-token
+*.env
+!env.example
+/oauth_state.json
+/tmp/
+.DS_Store

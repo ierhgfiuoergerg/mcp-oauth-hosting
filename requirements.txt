@@ -1,0 +1,4 @@
+starlette>=0.37
+uvicorn>=0.30
+mcp>=1.0
+pyjwt[crypto]>=2.8

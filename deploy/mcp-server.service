@@ -1,0 +1,33 @@
+[Unit]
+Description=Self-hosted MCP server (markdown knowledge base + OAuth)
+Documentation=https://github.com/<you>/mcp-oauth-hosting
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Secrets live here, not in the unit file:  chmod 600 /etc/mcp-server.env
+EnvironmentFile=/etc/mcp-server.env
+WorkingDirectory=/opt/mcp-server
+ExecStart=/opt/mcp-server/.venv/bin/python /opt/mcp-server/mcp_server.py
+Restart=always
+RestartSec=3
+
+# ── hardening (safe with the defaults in env.example) ───────────────────────
+DynamicUser=yes
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# Only the OAuth state dir is writable; the knowledge base stays read-only.
+StateDirectory=mcp-oauth
+ReadWritePaths=/var/lib/mcp-oauth
+# Read-only knowledge base mount — point KB_DIR at a path under this if you like:
+# ReadOnlyPaths=/opt/mcp-server/kb
+
+[Install]
+WantedBy=multi-user.target
