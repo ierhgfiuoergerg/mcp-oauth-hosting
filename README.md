@@ -1,11 +1,17 @@
 # mcp-oauth-hosting
 
-**Give a self-hosted MCP server a single HTTPS URL that any client can connect to — no custom
-header field, no pasted secret, no OAuth provider to sign up for.**
+**Connect your personal or team knowledge base to any endpoint over MCP — from any client, through a
+single HTTPS URL. No custom header field, no pasted secret, no OAuth provider to sign up for.**
 
-Some MCP clients (the Grok app is one, several mobile agents behave the same) only accept *one
-HTTPS URL* for a remote MCP server. There is no "add header" box. A static `Authorization: Bearer`
-key therefore cannot be typed anywhere — the client just says *"couldn't connect to the server"*.
+Point it at a folder of markdown — an Obsidian vault, a wiki export, a `docs/` directory — and it
+serves that knowledge base as a remote MCP server with two tools, `search_kb` and `get_doc`. The
+knowledge stays on your own machine or VPS; a client only ever needs one URL to reach it.
+
+Because it publishes as **one HTTPS URL and nothing else**, it works from *any* client on any
+endpoint — desktop apps, phone and mobile agents, chat assistants such as the Grok app — including
+the ones that offer no "add header" box, no bearer-key field and no way to read a local file path.
+A static `Authorization: Bearer` key cannot be typed anywhere in those clients; they just say
+*"couldn't connect to the server"*.
 
 What those clients *do* support is the standard **OAuth 2.1 discovery flow**:
 
@@ -23,6 +29,9 @@ So this repo ships a **~380-line drop-in shim** that implements exactly those en
 your existing static key — plus a small markdown MCP server to demonstrate it, a systemd unit, and
 scripts that publish it through a Cloudflare Tunnel and optionally put **Cloudflare Access** in
 front of the consent page so the human authorizes with an SSO login instead of a shared secret.
+
+For a team, that same Access layer puts the consent step behind SSO, so every teammate authorizes
+with their own identity instead of passing a shared key around.
 
 ```
         client (Grok / any MCP client)                    your VPS
