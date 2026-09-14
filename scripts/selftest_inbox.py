@@ -57,54 +57,70 @@ class Server:
 
     def __init__(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="kb-selftest-"))
-        self.kb = self.tmp / "kb"
-        self.evil = self.tmp / "kb-evil"          # sibling with a KB_DIR-name prefix
-        self.kb.mkdir()
-        self.evil.mkdir()
-        (self.kb / "inbox").mkdir()
+        self.proc = None
+        try:
+            self.kb = self.tmp / "kb"
+            self.evil = self.tmp / "kb-evil"    # sibling with a KB_DIR-name prefix
+            self.kb.mkdir()
+            self.evil.mkdir()
+            (self.kb / "inbox").mkdir()
 
-        (self.kb / "deploy-notes.md").write_text(
-            "---\ntitle: Deploy Notes\ntags: ops\n---\n\n# Deploy\n\nrun the deploy script\n",
-            encoding="utf-8")
-        (self.kb / "sub").mkdir()
-        (self.kb / "sub" / "deep.md").write_text("# Deep\n\nburied content\n", encoding="utf-8")
-        # must never appear in search results
-        (self.kb / "google-recovery-codes.md").write_text(
-            "# 2FA recovery codes\n\nSECRETCODE-AAAA\n", encoding="utf-8")
-        # must never be readable via get_doc
-        (self.evil / "secret.md").write_text("TOP-SECRET-SIBLING\n", encoding="utf-8")
+            (self.kb / "deploy-notes.md").write_text(
+                "---\ntitle: Deploy Notes\ntags: ops\n---\n\n# Deploy\n\nrun the deploy script\n",
+                encoding="utf-8")
+            (self.kb / "sub").mkdir()
+            (self.kb / "sub" / "deep.md").write_text("# Deep\n\nburied content\n", encoding="utf-8")
+            # must never appear in search results
+            (self.kb / "google-recovery-codes.md").write_text(
+                "# 2FA recovery codes\n\nSECRETCODE-AAAA\n", encoding="utf-8")
+            # must never be readable via get_doc
+            (self.evil / "secret.md").write_text("TOP-SECRET-SIBLING\n", encoding="utf-8")
 
-        self.port = free_port()
-        self.url = f"http://127.0.0.1:{self.port}/mcp"
-        env = dict(os.environ)
-        env.update({
-            "MCP_TOKEN": TOKEN,
-            "KB_DIR": str(self.kb),
-            "KB_WRITE_MODE": "inbox",
-            "KB_INBOX_DIR": INBOX,
-            "MCP_PATH": "/mcp",
-            "MCP_ALLOWED_HOSTS": "",
-            "KB_CACHE_TTL": "3",
-            "PORT": str(self.port),            # mcp_server.py reads HOST/PORT in __main__
-            "HOST": "127.0.0.1",
-        })
-        env.pop("MCP_PUBLIC_BASE", None)      # no OAuth shim in the selftest
-        env.pop("MCP_SHARE_SLUG", None)
-        self.proc = subprocess.Popen([sys.executable, str(SERVER)], env=env, cwd=str(SERVER.parent),
-                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        self._wait_ready()
+            self.port = free_port()
+            self.url = f"http://127.0.0.1:{self.port}/mcp"
+            env = dict(os.environ)
+            env.update({
+                "MCP_TOKEN": TOKEN,
+                "KB_DIR": str(self.kb),
+                "KB_WRITE_MODE": "inbox",
+                "KB_INBOX_DIR": INBOX,
+                "MCP_PATH": "/mcp",
+                "MCP_ALLOWED_HOSTS": "",
+                "KB_CACHE_TTL": "3",
+                "PORT": str(self.port),        # mcp_server.py reads HOST/PORT in __main__
+                "HOST": "127.0.0.1",
+            })
+            env.pop("MCP_PUBLIC_BASE", None)    # no OAuth shim in the selftest
+            env.pop("MCP_SHARE_SLUG", None)
+            self.proc = subprocess.Popen([sys.executable, str(SERVER)], env=env,
+                                         cwd=str(SERVER.parent), stdout=subprocess.PIPE,
+                                         stderr=subprocess.STDOUT, text=True)
+            self._wait_ready()
+        except BaseException:
+            # don't leave a temp tree behind when startup fails
+            self.close()
+            raise
 
     def _wait_ready(self, timeout=20):
+        proc = self.proc
+        assert proc is not None
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if self.proc.poll() is not None:
-                out = self.proc.stdout.read() if self.proc.stdout else ""
+            if proc.poll() is not None:
+                out = proc.stdout.read() if proc.stdout else ""
                 raise RuntimeError(f"server exited early:\n{out}")
             try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/health", timeout=2):
+                with urllib.request.urlopen(
+                        f"http://127.0.0.1:{self.port}/health", timeout=2) as r:
+                    data = json.loads(r.read())
+                # Confirm the answer comes from *our* server: an unrelated process already
+                # listening on this port would otherwise satisfy a bare readiness probe and
+                # every assertion below would silently test the wrong service.
+                if data.get("kb_dir") == str(self.kb):
                     return
             except Exception:
-                time.sleep(0.25)
+                pass
+            time.sleep(0.25)
         raise RuntimeError("server did not become ready")
 
     def rpc(self, method, params=None):
@@ -127,11 +143,13 @@ class Server:
             return json.loads(r.read())
 
     def close(self):
-        self.proc.terminate()
-        try:
-            self.proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
+        """Stop the server (if it started) and remove the throwaway tree."""
+        if self.proc is not None and self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
         shutil.rmtree(self.tmp, ignore_errors=True)
 
 
