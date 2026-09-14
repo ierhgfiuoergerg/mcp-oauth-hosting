@@ -1,6 +1,6 @@
 ---
 name: mcp-oauth-hosting
-description: Use when a remote MCP client only accepts one HTTPS URL and fails to connect (no header field for a bearer key), or when publishing a self-hosted MCP server through a tunnel with OAuth discovery and optional Cloudflare Access SSO consent. Ships a drop-in OAuth 2.1 shim, a minimal markdown MCP server, a hardened systemd unit, Cloudflare provisioning scripts and offline self-tests.
+description: Use when a remote MCP client only accepts one HTTPS URL and fails to connect (no header field for a bearer key), or when publishing a self-hosted MCP server through a tunnel with OAuth discovery and optional Cloudflare Access SSO consent. Ships a drop-in OAuth 2.1 shim, a minimal markdown MCP server (read-only by default, with an optional inbox-scoped `submit_doc`), a hardened systemd unit, Cloudflare provisioning scripts and offline self-tests.
 ---
 
 # Hosting an MCP server for URL-only clients
@@ -56,6 +56,11 @@ server instead, and scope any SSO to the browser-only consent path.
   unreachable URLs.
 * Return JSON for `POST /mcp`; an endless SSE stream hangs some clients.
 * Never commit an env file, tunnel credentials, or an API token. Keep `.gitignore` ahead of mistakes.
+* If you turn on writes (`KB_WRITE_MODE=inbox`), keep all three defences intact: **no** directory
+  parameter on the tool, a sanitised filename, and an `is_relative_to()` assertion on the resolved
+  path. Never overwrite an existing file — suffix a timestamp and keep the original.
+* Resolve file containment with `Path.is_relative_to()`. A `str.startswith()` check on the resolved
+  path lets a sibling directory through (`/kb-evil/x.md` starts with `/kb`).
 
 ## Verification checklist
 
@@ -65,6 +70,8 @@ server instead, and scope any SSO to the browser-only consent path.
 | `POST /mcp` with no key | 401 **with** `resource_metadata` |
 | `selftest_oauth.py https://host` | every step PASS, exit 0 |
 | `selftest_cf_jwt.py` | 9/9 (signature decides, not the header) |
+| `selftest_inbox.py` | 19/19 — write scoping, four traversal filenames, sibling-prefix containment, credential exclusion, cache invalidation |
+| `test_safe_stem.py` | 18/18 + the sanitiser invariant holds for every input |
 | `/authorize` in a browser | consent page (with SSO banner when Access is configured) |
 | client connector | `tools/list` returns your tools |
 

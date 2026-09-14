@@ -1,7 +1,8 @@
 # mcp-oauth-hosting
 
 **Connect your personal or team knowledge base to any endpoint over MCP — from any client, through a
-single HTTPS URL. No custom header field, no pasted secret, no OAuth provider to sign up for.**
+single HTTPS URL. Read-only by default; optionally let clients submit notes into one inbox folder.
+No custom header field, no pasted secret, no OAuth provider to sign up for.**
 
 Point it at a folder of markdown — an Obsidian vault, a wiki export, a `docs/` directory — and it
 serves that knowledge base as a remote MCP server with two tools, `search_kb` and `get_doc`. The
@@ -99,17 +100,52 @@ complete an interactive login page, and wrapping them is what breaks the connect
 The provisioning script probes for exactly that mistake and rolls itself back if `/mcp` stops
 answering with your own 401.
 
+## Optional: let clients write — into one folder, and only that folder
+
+Set `KB_WRITE_MODE=inbox` and the server additionally exposes `submit_doc(title, content, tags, filename)`.
+Useful when a phone-side agent should be able to drop a note into your vault, but you do not want an
+LLM-writable filesystem.
+
+Three independent defences, any one of which alone would stop traversal:
+
+1. **No directory parameter exists.** The tool's signature has no path argument at all; the destination
+   is a server-side constant (`KB_DIR` + `KB_INBOX_DIR`). There is nothing for a client to point elsewhere.
+2. **The filename is sanitised.** `/` and `\` become `-`; control and shell-ish characters are collapsed;
+   `..`, leading/trailing dots and length are handled; empty input becomes `untitled`. Invariant, for
+   *any* input: no `/`, no `\`, no `..`, not `.`/`..`, non-empty, ≤ 80 chars.
+3. **The resolved path is asserted** to sit directly inside the inbox (`target.parent != INBOX_DIR` ⇒ refuse).
+
+Plus: existing files are never overwritten — a name collision appends a timestamp, so the original is
+kept. Writes invalidate the index cache, so submitted content is searchable immediately.
+
+```bash
+KB_WRITE_MODE=inbox KB_INBOX_DIR=inbox ./... mcp_server.py
+```
+
+What a client sends vs where it lands (from `scripts/selftest_inbox.py`):
+
+| `filename` sent by the client | file actually written |
+| --- | --- |
+| `../../../../tmp/pwned` | `inbox/tmp-pwned.md` |
+| `/etc/cron.d/pwned` | `inbox/etc-cron.d-pwned.md` |
+| `..%2f..%2fescape` | `inbox/2f..2fescape.md` |
+| `....//....//deep-escape` | `inbox/deep-escape.md` |
+
+Default is `off` — a server that cannot write cannot be talked into writing.
+
 ## What you get
 
 | file | what it is |
 | --- | --- |
 | `oauth_shim.py` | the OAuth 2.1 shim: discovery, DCR, consent page, PKCE token exchange, refresh, revoke. Optional Cloudflare Access identity verification. |
-| `mcp_server.py` | minimal Streamable-HTTP MCP server: `search_kb` + `get_doc` over a folder of `.md` files, bearer auth (header / query / path / share-slug), host allow-list, `/health`. |
+| `mcp_server.py` | minimal Streamable-HTTP MCP server: `search_kb` + `get_doc` over a folder of `.md` files — cached index, credential-shaped files excluded — bearer auth (header / query / path / share-slug), host allow-list, `/health`. With `KB_WRITE_MODE=inbox`, also `submit_doc` scoped to one folder. |
 | `deploy/install.sh` + `deploy/mcp-server.service` | hardened systemd install (DynamicUser, `ProtectSystem=strict`, binds 127.0.0.1). |
 | `scripts/provision_cf_access_app.sh` | creates the path-scoped Access app via API + safety probe + rollback. |
 | `scripts/add_cname.sh` | proxied CNAME → `<tunnel-id>.cfargotunnel.com`, idempotent. |
 | `scripts/selftest_oauth.py` | walks the whole flow a URL-only client walks; 14 assertions. |
 | `scripts/selftest_cf_jwt.py` | proves signature verification with a locally self-signed JWT (9 assertions, no Cloudflare needed). |
+| `scripts/selftest_inbox.py` | self-contained (builds a throwaway KB, starts the server on a spare port, tears it down): 19 assertions covering write scoping, four traversal-shaped filenames, the sibling-prefix containment trap, credential exclusion, cache invalidation. |
+| `scripts/test_safe_stem.py` | unit test for the filename sanitiser, extracted from the real source via AST — 18 cases plus a hard invariant that must hold for every input. |
 | `tests/run_all.sh` | all of the above, offline, one command. |
 | `references/` | the specs, the gotchas, and the security reasoning. |
 | `SKILL.md` | the same procedure packaged as an agent skill. |
@@ -127,9 +163,16 @@ See `env.example` for the annotated list. The important ones:
 | `MCP_SHARE_SLUG` | *separate* throwaway key for `/s/<slug>/mcp` URL-embedded access. |
 | `MCP_OAUTH_STATE` | where clients/refresh tokens are stored (chmod 600). |
 | `MCP_CF_ACCESS_TEAM` / `MCP_CF_ACCESS_AUD` | enable keyless Cloudflare-Access consent. |
+| `KB_WRITE_MODE` | `off` (default — strictly read-only) or `inbox` (expose `submit_doc`). |
+| `KB_INBOX_DIR` | the one folder `submit_doc` may write to (default `inbox`). |
+| `KB_EXCLUDE_DIRS` / `KB_EXCLUDE_GLOBS` | keep credential-shaped documents out of the index even though they live in `KB_DIR`. |
+| `KB_MAX_DOC_BYTES` / `KB_MAX_WRITE_BYTES` / `KB_CACHE_TTL` | index size cap (2 MiB), write size cap (512 KiB), cache lifetime (3 s). |
 
 ## Things that will bite you
 
+* **Containment checks: use `Path.is_relative_to()`, never `str.startswith()`.** `"/kb-evil/x.md".startswith("/kb")`
+  is `True` — a sibling directory whose name merely extends `KB_DIR` would be readable. `scripts/selftest_inbox.py`
+  asserts this case explicitly.
 * **Wrap `/authorize`, never `/mcp`.** A non-browser client hitting a Cloudflare login page dies.
 * **`HTTP 421 "Misdirected Request"`** on a tunnel: the origin received the wrong `Host`/`:authority`
   (h2 → HTTP/1.1 rewrite). Fix the tunnel `originRequest` (`http2Origin`, `originServerName`) — don't

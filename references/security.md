@@ -49,7 +49,30 @@ identity" sense. Know exactly what you have.
 | guessing the key via `/authorize` | 401 per attempt; add rate limiting or you're just measuring their patience |
 | leaked refresh token | rotation + storage mode 600 limits the window; rotation makes abuse detectable |
 | Host-header / DNS rebinding | `MCP_ALLOWED_HOSTS` allow-list rejects mismatched `Host` |
-| traversal via `get_doc` | resolved path must stay under `KB_DIR` (`Path.resolve()` prefix check) |
+| traversal via `get_doc` | resolved path must stay under `KB_DIR`, checked with `Path.is_relative_to()` — **not** a string prefix test: `/kb-evil/x.md`.startswith(`/kb`) is True, so a sibling directory would leak |
+
+## Inbox-scoped writes (optional)
+
+`KB_WRITE_MODE=inbox` adds one write tool. The design rule is that **a client cannot influence the
+destination path at all**, enforced three independent ways:
+
+1. `submit_doc` has no path/directory parameter — the destination is `KB_DIR / KB_INBOX_DIR`, a
+   server-side constant.
+2. The filename is reduced by `_safe_stem()` to a fragment with no separator, no `..`, and a length
+   cap. The invariant (no `/`, no `\`, no `..`, not `.`/`..`, non-empty, ≤ 80 chars) holds for
+   *every* input — `scripts/test_safe_stem.py` asserts it over an attack corpus.
+3. The final `target.parent != INBOX_DIR` assertion. Redundant given (2), kept so that a future edit
+   to (2) cannot silently open a traversal.
+
+Never-overwrite is part of the design rather than a nicety: a name collision appends a timestamp, so
+a submitted document can never destroy an existing one.
+
+Default is `off`. Off means the tool is not advertised at all — a capability that does not exist
+cannot be talked out of a model.
+
+Residual risks worth naming: every accepted write is a file in your vault (and, with a syncing
+vault, in your git history); the share slug can write too, not just the main key; and exclusion
+rules are filename-shaped, so a secret written into innocuously-named file still gets indexed.
 
 ## If you need real access control
 

@@ -28,6 +28,12 @@ for s in scripts/*.sh deploy/*.sh; do bash -n "$s" && echo "  ok $s"; done
 echo "=== 2) Cloudflare Access JWT verification (offline) ==="
 $PY_BIN scripts/selftest_cf_jwt.py "$ROOT"
 
+echo "=== 2b) filename sanitiser unit test (offline) ==="
+$PY_BIN scripts/test_safe_stem.py "$ROOT/mcp_server.py"
+
+echo "=== 2c) inbox write scoping + index cache (self-contained, own port) ==="
+$PY_BIN scripts/selftest_inbox.py "$ROOT/mcp_server.py"
+
 echo "=== 3) live OAuth flow on 127.0.0.1:$PORT ==="
 MCP_TOKEN="$TOKEN" KB_DIR="$ROOT/examples/kb" MCP_PUBLIC_BASE="http://127.0.0.1:$PORT" \
 MCP_OAUTH_STATE="$STATE" PORT="$PORT" HOST=127.0.0.1 \

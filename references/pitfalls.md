@@ -77,3 +77,22 @@ as a minimal stream.
 5. check /authorize returns 200 (a consent page), not a 302 to Cloudflare
 6. check the client's own logs: does it send Authorization at all?
 ```
+
+## 11. Containment checks that look right but aren't
+
+```python
+target = (KB_DIR / user_supplied).resolve()
+if not str(target).startswith(str(KB_DIR)):   # WRONG
+    return "not found"
+```
+
+With `KB_DIR=/srv/kb`, the path `/srv/kb-evil/secret.md` **passes** that test — the sibling
+directory merely shares the name prefix. Use path semantics, not string semantics:
+
+```python
+if not target.is_relative_to(KB_DIR):         # right (Python 3.9+)
+```
+
+The same trap appears in zip/tar extraction guards and in "is this file inside the uploads dir"
+checks. `scripts/selftest_inbox.py` builds a `/kb` + `/kb-evil` pair specifically to keep this
+from regressing.
