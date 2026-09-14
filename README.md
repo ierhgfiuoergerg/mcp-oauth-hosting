@@ -52,20 +52,22 @@ with their own identity instead of passing a shared key around.
 ## Quickstart (5 minutes, local)
 
 ```bash
-git clone <this repo> mcp-oauth-hosting && cd mcp-oauth-hosting
+git clone https://github.com/ierhgfiuoergerg/mcp-oauth-hosting.git && cd mcp-oauth-hosting
+python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 
-MCP_TOKEN=$(openssl rand -hex 32) \
-KB_DIR=./examples/kb \
-MCP_PUBLIC_BASE=http://127.0.0.1:8081 \
-HOST=127.0.0.1 PORT=8081 \
-python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt \
-  && ./.venv/bin/python mcp_server.py
+# Then run it. Note: give the env vars to the *server* process — a `VAR=x cmd1 && cmd2`
+# prefix would only reach cmd1, and the server would exit with "MCP_TOKEN is required".
+export MCP_TOKEN=$(openssl rand -hex 32)
+export KB_DIR=./examples/kb
+export MCP_PUBLIC_BASE=http://127.0.0.1:8081
+export HOST=127.0.0.1 PORT=8081
+./.venv/bin/python mcp_server.py
 ```
 
 ```bash
 curl -s localhost:8081/health                         # {"ok":true,"docs":2,...}
 curl -si -X POST localhost:8081/mcp | head -3         # 401 + resource_metadata
-bash tests/run_all.sh                                 # 23 assertions, all offline
+bash tests/run_all.sh                                 # 60 assertions, all offline
 ```
 
 Then put it on the internet (TLS is mandatory for every real client):
