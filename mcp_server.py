@@ -71,6 +71,14 @@ WRITE_MODE = os.environ.get("KB_WRITE_MODE", "off").strip().lower()
 INBOX_DIRNAME = os.environ.get("KB_INBOX_DIR", "inbox").strip() or "inbox"
 INBOX_DIR = (KB_DIR / INBOX_DIRNAME).resolve()
 
+# Frontmatter written into submitted documents. Defaults are deliberately generic
+# (source: mcp, no type); a vault with its own schema can map them onto whatever values
+# it validates — e.g. KB_INBOX_SOURCE=ai and KB_INBOX_TYPE=inbox for a vault whose linter
+# only accepts ai/wechat/manual/import/obsidian as source and requires an explicit type.
+INBOX_SOURCE = os.environ.get("KB_INBOX_SOURCE", "mcp").strip() or "mcp"
+INBOX_TYPE = os.environ.get("KB_INBOX_TYPE", "").strip()
+INBOX_STATUS = os.environ.get("KB_INBOX_STATUS", "raw").strip() or "raw"
+
 # ── index scoping ────────────────────────────────────────────────────────────
 # Credential-shaped documents stay out of the index even when they live in KB_DIR:
 # pointing this server at a real notes vault should not publish its recovery codes.
@@ -278,17 +286,18 @@ def _submit(args):
     tags = ", ".join(t.strip() for t in str(args.get("tags", "")).split(",") if t.strip())
     safe_title = title.replace('"', "'")
     created = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
-    text = (
-        "---\n"
-        f'id: {stem}\n'
-        f'title: "{safe_title}"\n'
-        f'tags: [{tags}]\n'
-        "source: mcp\n"
-        f'created: "{created}"\n'
-        "status: raw\n"
-        "---\n\n"
-        f"{content.strip()}\n"
-    )
+    fields = []
+    if INBOX_TYPE:                       # omitted unless the host vault requires it
+        fields.append(f"type: {INBOX_TYPE}")
+    fields += [
+        f"id: {stem}",
+        f'title: "{safe_title}"',
+        f"tags: [{tags}]",
+        f"source: {INBOX_SOURCE}",
+        f'created: "{created}"',
+        f"status: {INBOX_STATUS}",
+    ]
+    text = "---\n" + "\n".join(fields) + "\n---\n\n" + content.strip() + "\n"
     target.write_text(text, encoding="utf-8")
     invalidate_cache()
     return {"ok": True, "id": stem, "title": title, "path": f"{INBOX_DIRNAME}/{target.name}",

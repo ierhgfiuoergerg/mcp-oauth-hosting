@@ -67,7 +67,7 @@ export HOST=127.0.0.1 PORT=8081
 ```bash
 curl -s localhost:8081/health                         # {"ok":true,"docs":2,...}
 curl -si -X POST localhost:8081/mcp | head -3         # 401 + resource_metadata
-bash tests/run_all.sh                                 # 60 assertions, all offline
+bash tests/run_all.sh                                 # 61 assertions, all offline
 ```
 
 Then put it on the internet (TLS is mandatory for every real client):
@@ -133,6 +133,14 @@ What a client sends vs where it lands (from `scripts/selftest_inbox.py`):
 | `..%2f..%2fescape` | `inbox/2f..2fescape.md` |
 | `....//....//deep-escape` | `inbox/deep-escape.md` |
 
+**Frontmatter is configurable**, because a submitted note has to land in *your* vault, and
+vaults disagree about metadata. The defaults are generic (`source: mcp`, no `type`); map them onto
+whatever your own linter validates:
+
+```bash
+KB_INBOX_TYPE=inbox KB_INBOX_SOURCE=ai KB_INBOX_STATUS=raw   # e.g. a wiki requiring these values
+```
+
 Default is `off` — a server that cannot write cannot be talked into writing.
 
 ## What you get
@@ -169,6 +177,7 @@ See `env.example` for the annotated list. The important ones:
 | `KB_INBOX_DIR` | the one folder `submit_doc` may write to (default `inbox`). |
 | `KB_EXCLUDE_DIRS` / `KB_EXCLUDE_GLOBS` | keep credential-shaped documents out of the index even though they live in `KB_DIR`. |
 | `KB_MAX_DOC_BYTES` / `KB_MAX_WRITE_BYTES` / `KB_CACHE_TTL` | index size cap (2 MiB), write size cap (512 KiB), cache lifetime (3 s). |
+| `KB_INBOX_SOURCE` / `KB_INBOX_TYPE` / `KB_INBOX_STATUS` | frontmatter written into submissions (defaults `mcp` / omitted / `raw`) — set these to match your vault's schema. |
 
 ## Things that will bite you
 

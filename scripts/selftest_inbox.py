@@ -55,7 +55,7 @@ def free_port():
 class Server:
     """Throwaway KB tree + server process."""
 
-    def __init__(self):
+    def __init__(self, extra_env=None):
         self.tmp = Path(tempfile.mkdtemp(prefix="kb-selftest-"))
         self.proc = None
         try:
@@ -92,6 +92,8 @@ class Server:
             })
             env.pop("MCP_PUBLIC_BASE", None)    # no OAuth shim in the selftest
             env.pop("MCP_SHARE_SLUG", None)
+            if extra_env:
+                env.update(extra_env)
             self.proc = subprocess.Popen([sys.executable, str(SERVER)], env=env,
                                          cwd=str(SERVER.parent), stdout=subprocess.PIPE,
                                          stderr=subprocess.STDOUT, text=True)
@@ -190,9 +192,11 @@ def main():
         target = srv.kb / INBOX / "Selftest-Note.md"
         check("submit_doc writes into the inbox", res.get("ok") is True and target.exists(),
               str(res.get("path")))
-        check("written frontmatter is well-formed",
-              target.exists() and all(k in target.read_text(encoding="utf-8")
-                                      for k in ('title: "Selftest Note"', "status: raw")))
+        body0 = target.read_text(encoding="utf-8") if target.exists() else ""
+        check("written frontmatter uses the generic defaults (source: mcp, no type)",
+              all(k in body0 for k in ('title: "Selftest Note"', "status: raw", "source: mcp"))
+              and "type:" not in body0,
+              body0.split("---")[1].strip().replace("\n", " | ")[:80] if body0 else "no file")
 
         # 6) four traversal-shaped filenames
         attacks = [("../../../../tmp/pwned", "relative traversal"),
@@ -230,6 +234,21 @@ def main():
         check("index cache serves repeat searches without re-reading files",
               hot < 0.02 and rescan < 0.3,
               f"first {first*1000:.0f}ms / hot {hot*1000:.1f}ms / after-TTL rescan {rescan*1000:.0f}ms")
+
+        # 11) the frontmatter is configurable, so a vault with its own schema can be served
+        #     (e.g. a wiki whose linter only accepts source ∈ {ai,wechat,manual,import,obsidian}
+        #     and requires an explicit type)
+        srv2 = Server(extra_env={"KB_INBOX_TYPE": "inbox", "KB_INBOX_SOURCE": "ai"})
+        try:
+            srv2.call("submit_doc", {"title": "Configured", "content": "x",
+                                     "filename": "configured"})
+            cfg = srv2.kb / INBOX / "configured.md"
+            body2 = cfg.read_text(encoding="utf-8") if cfg.exists() else ""
+            check("KB_INBOX_TYPE / KB_INBOX_SOURCE override the frontmatter",
+                  "type: inbox" in body2 and "source: ai" in body2,
+                  body2.split("---")[1].strip().replace("\n", " | ")[:80] if body2 else "no file")
+        finally:
+            srv2.close()
     finally:
         srv.close()
 
