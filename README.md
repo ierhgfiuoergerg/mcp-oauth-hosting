@@ -1,5 +1,7 @@
 # mcp-oauth-hosting
 
+**English** · [中文](README.zh-CN.md)
+
 **Connect your personal or team knowledge base to any endpoint over MCP — from any client, through a
 single HTTPS URL. Read-only by default; optionally let clients submit notes into one inbox folder.
 No custom header field, no pasted secret, no OAuth provider to sign up for.**
@@ -154,7 +156,7 @@ Default is `off` — a server that cannot write cannot be talked into writing.
 | `scripts/add_cname.sh` | proxied CNAME → `<tunnel-id>.cfargotunnel.com`, idempotent. |
 | `scripts/selftest_oauth.py` | walks the whole flow a URL-only client walks; 14 assertions. |
 | `scripts/selftest_cf_jwt.py` | proves signature verification with a locally self-signed JWT (9 assertions, no Cloudflare needed). |
-| `scripts/selftest_inbox.py` | self-contained (builds a throwaway KB, starts the server on a spare port, tears it down): 19 assertions covering write scoping, four traversal-shaped filenames, the sibling-prefix containment trap, credential exclusion, cache invalidation. |
+| `scripts/selftest_inbox.py` | self-contained (builds a throwaway KB, starts the server on a spare port, tears it down): 20 assertions covering write scoping, four traversal-shaped filenames, the sibling-prefix containment trap, credential exclusion, cache invalidation, configurable frontmatter. |
 | `scripts/test_safe_stem.py` | unit test for the filename sanitiser, extracted from the real source via AST — 18 cases plus a hard invariant that must hold for every input. |
 | `tests/run_all.sh` | all of the above, offline, one command. |
 | `references/` | the specs, the gotchas, and the security reasoning. |
